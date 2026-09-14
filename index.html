@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Qwen E2E Relay</title>
+<style>
+:root{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color-scheme:dark;background:#111;color:#eee}
+body{margin:0;padding:20px;max-width:760px;margin:auto}.card{background:#1c1c1e;border:1px solid #333;border-radius:16px;padding:16px;margin:12px 0}
+h1{font-size:24px}textarea{box-sizing:border-box;width:100%;min-height:130px;border-radius:12px;border:1px solid #444;background:#0d0d0e;color:#fff;padding:12px;font:15px ui-monospace,SFMono-Regular,Menlo,monospace}
+button{border:0;border-radius:12px;padding:12px 15px;margin:6px 6px 6px 0;font-weight:600}button.primary{background:#fff;color:#111}.muted{color:#aaa;font-size:13px;line-height:1.45}.ok{color:#9fda9f}.warn{color:#ffd479}.bad{color:#ff8e8e}pre{white-space:pre-wrap;word-break:break-word;background:#0d0d0e;padding:12px;border-radius:12px}.row{display:flex;gap:8px;flex-wrap:wrap}
+</style></head>
+<body>
+<h1>Qwen E2E Relay</h1>
+<div class="card"><b>Status:</b> <span id="status" class="warn">JavaScript startet…</span><p id="diag" class="muted">Diese Seite verschlüsselt Nachrichten lokal im Browser, bevor du sie in ChatGPT einfügst.</p></div>
+<div class="card"><h2>1. Nachricht an Qwen</h2><textarea id="message" placeholder="Nachricht an Qwen…"></textarea><div class="row"><button class="primary" id="encrypt" type="button">Verschlüsseln</button><button id="clearHistory" type="button">Lokalen Verlauf löschen</button></div><p class="muted">Danach nur den erzeugten <code>QWEN1.…</code>-Text in den Chat kopieren.</p><textarea id="request" readonly placeholder="Hier erscheint der Ciphertext"></textarea><button id="copyRequest" type="button">Ciphertext kopieren</button></div>
+<div class="card"><h2>2. Verschlüsselte Qwen-Antwort</h2><textarea id="response" placeholder="QWENR1.… hier einfügen"></textarea><button class="primary" id="decrypt" type="button">Antwort entschlüsseln</button><pre id="plainReply">Noch keine Antwort.</pre></div>
+<div class="card"><h2>Lokaler Gesprächsverlauf</h2><pre id="history"></pre><p class="muted">Schlüssel und Verlauf bleiben lokal in diesem Browser, soweit Safari lokalen Speicher erlaubt.</p></div>
+<script>
+(function(){
+'use strict';
+const QWEN_PUBLIC_JWK = {"kty":"RSA","n":"snRg6wWuDml9SVzWIRdBopLoS_yi4QwR3wDB9vtOMqDkHNbpVM_JykFtCCqmt4G8VOcxkhn3CFjYO4Z7mzp5xHBKlFu8DOfbiN57dwdB5chl9hEEfaXaBmFMqIAWsfTAFJ_ghFJ5RbbhRPMmWgy_orNWsEoGZqN89SnzKt9LtqP5Yv8aGAhG3Ujboxhw88d-zYbZHlG7rPRP1bTnGsIJ0W4rY3XiyngtQ67IaLA6q552jP9pZ2wiS4tBAcxh53-ByzoFXTWd2HDnCMw2LyPe_nWHkoIkQSsa376kOyGCYmReFvrwhtI33BfcYqjoO8UjluJyETeRpw97gzVd2Vh5vHXsYyBua7P2o5DjLQqhG321H6vU1d2-_aXdGxqqhzP6t1D3h079kQp1yaLrRGVxWrxe-kdVJJ5-FOiXorO6a9wjQQd6rsKFGX_Jzs7Sdre2O8d65XGPYK-PTH_wkNfhecROph6ryfg0RioXpWOZ_YEoBUviw1lGYCpSqqQ5zBc9","e":"AQAB","alg":"RSA-OAEP-256","ext":true,"key_ops":["encrypt"]};
+const statusEl=document.getElementById('status'),diagEl=document.getElementById('diag');
+let storageOK=false;
+const memStore=new Map();
+const store={
+ get(k){if(storageOK){try{return localStorage.getItem(k)}catch(e){storageOK=false}}return memStore.has(k)?memStore.get(k):null},
+ set(k,v){if(storageOK){try{localStorage.setItem(k,v);return}catch(e){storageOK=false}}memStore.set(k,v)},
+ del(k){if(storageOK){try{localStorage.removeItem(k)}catch(e){storageOK=false}}memStore.delete(k)}
+};
+try{const x='__qwen_test__'+Date.now();localStorage.setItem(x,'1');localStorage.removeItem(x);storageOK=true}catch(e){storageOK=false}
+if(!window.crypto || !window.crypto.subtle){statusEl.innerHTML='<span class="bad">WebCrypto fehlt</span>';diagEl.textContent='Diese Ansicht stellt crypto.subtle nicht bereit. Öffne die Seite in Safari/Chrome über HTTPS.';return;}
+const te=new TextEncoder(), td=new TextDecoder();
+const b64u=b=>{let s='';new Uint8Array(b).forEach(x=>s+=String.fromCharCode(x));return btoa(s).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'')};
+const ub64u=s=>{s=s.replace(/-/g,'+').replace(/_/g,'/');s+='='.repeat((4-s.length%4)%4);const x=atob(s),u=new Uint8Array(x.length);for(let i=0;i<x.length;i++)u[i]=x.charCodeAt(i);return u.buffer};
+const encObj=o=>b64u(te.encode(JSON.stringify(o)).buffer), decObj=s=>JSON.parse(td.decode(ub64u(s)));
+let privKey,pubKey,pubJwk,keysReady=false;
+let history=[];try{history=JSON.parse(store.get('qwenE2EHistory')||'[]')}catch{history=[]}
+function saveHistory(){store.set('qwenE2EHistory',JSON.stringify(history));renderHistory()}
+function renderHistory(){document.getElementById('history').textContent=history.length?history.map(x=>(x.role==='user'?'Du':'Qwen')+': '+x.content).join('\n\n'):'(leer)'}
+async function ensureKeys(){
+ if(keysReady)return;
+ const p=store.get('qwenE2EPrivateJwk'), q=store.get('qwenE2EPublicJwk');
+ if(p&&q){try{const pj=JSON.parse(p);pubJwk=JSON.parse(q);privKey=await crypto.subtle.importKey('jwk',pj,{name:'RSA-OAEP',hash:'SHA-256'},true,['decrypt']);pubKey=await crypto.subtle.importKey('jwk',pubJwk,{name:'RSA-OAEP',hash:'SHA-256'},true,['encrypt']);keysReady=true;return}catch(e){store.del('qwenE2EPrivateJwk');store.del('qwenE2EPublicJwk')}}
+ const kp=await crypto.subtle.generateKey({name:'RSA-OAEP',modulusLength:3072,publicExponent:new Uint8Array([1,0,1]),hash:'SHA-256'},true,['encrypt','decrypt']);
+ privKey=kp.privateKey;pubKey=kp.publicKey;const pj=await crypto.subtle.exportKey('jwk',privKey);pubJwk=await crypto.subtle.exportKey('jwk',pubKey);store.set('qwenE2EPrivateJwk',JSON.stringify(pj));store.set('qwenE2EPublicJwk',JSON.stringify(pubJwk));keysReady=true;
+}
+async function encryptMessage(){
+ statusEl.textContent='verschlüssele…';
+ await ensureKeys(); const msg=document.getElementById('message').value;if(!msg.trim()){statusEl.innerHTML='<span class="warn">Bitte Nachricht eingeben</span>';return;}
+ const qpub=await crypto.subtle.importKey('jwk',QWEN_PUBLIC_JWK,{name:'RSA-OAEP',hash:'SHA-256'},false,['encrypt']);
+ const aesRaw=crypto.getRandomValues(new Uint8Array(32)),iv=crypto.getRandomValues(new Uint8Array(12));const aes=await crypto.subtle.importKey('raw',aesRaw,{name:'AES-GCM'},false,['encrypt']);
+ const payload={message:msg,history:history.slice(-8),reply_public_jwk:pubJwk};
+ const ct=await crypto.subtle.encrypt({name:'AES-GCM',iv,additionalData:te.encode('QWEN-E2E-v1')},aes,te.encode(JSON.stringify(payload)));
+ const ek=await crypto.subtle.encrypt({name:'RSA-OAEP'},qpub,aesRaw);
+ const env={v:1,alg:'RSA-OAEP-256+A256GCM',ek:b64u(ek),iv:b64u(iv.buffer),ct:b64u(ct)};
+ document.getElementById('request').value='QWEN1.'+encObj(env); history.push({role:'user',content:msg});saveHistory();
+ statusEl.innerHTML='<span class="ok">Ciphertext erzeugt</span>';
+}
+async function decryptReply(){
+ await ensureKeys();let t=document.getElementById('response').value.trim();if(!t.startsWith('QWENR1.'))throw new Error('Antwort muss mit QWENR1. beginnen');
+ const env=decObj(t.slice(7));const aesRaw=await crypto.subtle.decrypt({name:'RSA-OAEP'},privKey,ub64u(env.ek));const aes=await crypto.subtle.importKey('raw',aesRaw,{name:'AES-GCM'},false,['decrypt']);
+ const plain=await crypto.subtle.decrypt({name:'AES-GCM',iv:new Uint8Array(ub64u(env.iv)),additionalData:te.encode('QWEN-E2E-REPLY-v1')},aes,ub64u(env.ct));const obj=JSON.parse(td.decode(plain));document.getElementById('plainReply').textContent=obj.reply;history.push({role:'assistant',content:obj.reply});saveHistory();statusEl.innerHTML='<span class="ok">Antwort entschlüsselt</span>';
+}
+async function copyText(el){try{await navigator.clipboard.writeText(el.value);statusEl.innerHTML='<span class="ok">kopiert</span>'}catch{el.focus();el.select();document.execCommand('copy')}}
+function showErr(e){console.error(e);statusEl.innerHTML='<span class="bad">Fehler: '+String(e && e.message || e)+'</span>';diagEl.textContent=String(e && e.stack || e)}
+document.getElementById('encrypt').addEventListener('click',()=>encryptMessage().catch(showErr));
+document.getElementById('decrypt').addEventListener('click',()=>decryptReply().catch(showErr));
+document.getElementById('copyRequest').addEventListener('click',()=>copyText(document.getElementById('request')).catch(showErr));
+document.getElementById('clearHistory').addEventListener('click',()=>{history=[];saveHistory();statusEl.innerHTML='<span class="ok">Verlauf gelöscht</span>'});
+renderHistory();
+statusEl.innerHTML='<span class="ok">JavaScript + WebCrypto verfügbar</span>';
+diagEl.textContent=storageOK?'Browser-Speicher verfügbar. Schlüssel/Verlauf bleiben lokal gespeichert.':'Browser-Speicher blockiert. Verschlüsselung funktioniert trotzdem, solange diese Seite geöffnet bleibt.';
+ensureKeys().then(()=>{statusEl.innerHTML='<span class="ok">bereit</span>'}).catch(showErr);
+})();
+</script></body></html>
