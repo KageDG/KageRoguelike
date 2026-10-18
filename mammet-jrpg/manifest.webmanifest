@@ -1,0 +1,18 @@
+{
+  "name": "Chroniken von Asterfall: Mammets Schatten",
+  "short_name": "Asterfall JRPG",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0c1020",
+  "theme_color": "#101526",
+  "description": "Ein asynchrones 16-Bit-JRPG für drei Helden",
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
