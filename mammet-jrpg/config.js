@@ -4,5 +4,6 @@
 window.MAMMET_CONFIG = {
   supabaseUrl: "",
   anonKey: "",
-  edgeFunction: "mammet-api"
+  edgeFunction: "mammet-api",
+  pushPublicKey: "" // Optional: public VAPID key (not private key)
 };
