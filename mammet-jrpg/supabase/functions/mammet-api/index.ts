@@ -33,6 +33,37 @@ async function hash(v:string){const bytes=new TextEncoder().encode(v);const out=
 async function getRow(){const r=await fetch(rowPath+"&select=id,version,state",{headers:dbHeaders});if(!r.ok)throw Error("Datenbank nicht erreichbar ("+r.status+")");const rows=await r.json();return rows[0]||null}
 async function initialize(){const r=await fetch(url+"/rest/v1/game_sessions?on_conflict=id",{method:"POST",headers:{...dbHeaders,Prefer:"resolution=ignore-duplicates"},body:JSON.stringify({id:gameId,version:0,state:fresh()})});if(!r.ok)throw Error("Initialisierung fehlgeschlagen ("+r.status+")")}
 async function saveVersion(version:number,state:Game){const r=await fetch(rowPath+"&version=eq."+version,{method:"PATCH",headers:{...dbHeaders,Prefer:"return=representation"},body:JSON.stringify({version:version+1,state})});if(!r.ok)throw Error("Speichern fehlgeschlagen ("+r.status+")");const items=await r.json();return items.length===1}
+
+async function saveSubscription(secretHash:string, subscription:any) {
+  const endpoint=String(subscription?.endpoint||"");
+  const p256dh=String(subscription?.keys?.p256dh||"");
+  const auth=String(subscription?.keys?.auth||"");
+  if(!endpoint.startsWith("https://")||endpoint.length>1024||p256dh.length<20||auth.length<10)throw Error("Ungültiges Push-Abo.");
+  const row=await getRow();
+  const player=row?.state?.players?.find((p:Game)=>p.secretHash===secretHash);
+  if(!player)throw Error("Erst als Spieler anmelden.");
+  const result=await fetch(url+"/rest/v1/game_push_subscriptions?on_conflict=endpoint",{
+   method:"POST",headers:{...dbHeaders,Prefer:"resolution=merge-duplicates"},
+   body:JSON.stringify({game_id:gameId,hero:player.hero,endpoint,subscription:{endpoint,expirationTime:subscription.expirationTime||null,keys:{p256dh,auth}}})
+  });
+  if(!result.ok)throw Error("Push-Anmeldung fehlgeschlagen ("+result.status+").");
+}
+async function notifyNext(s:Game){
+  const next=s.phase==="playing"?s.order?.[s.cursor]:null;
+  const pub=env("VAPID_PUBLIC_KEY"),priv=env("VAPID_PRIVATE_KEY"),subject=env("VAPID_SUBJECT");
+  if(!next||next==="mammet"||!pub||!priv||!subject)return;
+  try{
+   const r=await fetch(url+"/rest/v1/game_push_subscriptions?game_id=eq."+gameId+"&hero=eq."+next+"&select=subscription",{headers:dbHeaders});
+   if(!r.ok)return;
+   const subs=await r.json();
+   if(!subs.length)return;
+   const module=await import("npm:web-push@3.6.7");
+   const webpush=module.default??module;
+   webpush.setVapidDetails(subject,pub,priv);
+   const payload=JSON.stringify({title:"Mammets Schatten",body:"Du bist am Zug! Runde "+s.round+" – "+(heroes[next]?.name||"Held"),url:"./"});
+   await Promise.allSettled(subs.map((v:any)=>webpush.sendNotification(v.subscription,payload,{TTL:3600})));
+  }catch(e){console.error("Push failed",e)}
+}
 async function narrate(context:string,fallback:string):Promise<string>{
  const key=env("OPENAI_API_KEY");
  if(!key)return fallback;
@@ -123,15 +154,22 @@ Deno.serve(async(req)=>{
    let r=await getRow();if(!r){await initialize();r=await getRow()}
    return reply({state:publicView(r.state),version:r.version});
   }
-  if(type!=="join"&&type!=="act")return fail("Unbekannter Aufruf");
+  if(type!=="join"&&type!=="act"&&type!=="subscribe")return fail("Unbekannter Aufruf");
   if(typeof data.token!=="string"||data.token.length<30||data.token.length>200)return fail("Ungültige Spieleridentität",403);
   const secretHash=await hash(data.token);
+  if(type==="subscribe"){
+   try{await saveSubscription(secretHash,data.subscription);return reply({ok:true})}
+   catch(e){return fail(e instanceof Error?e.message:"Push-Anmeldung fehlgeschlagen",400)}
+  }
   for(let n=0;n<4;n++){
    let row=await getRow();if(!row){await initialize();row=await getRow()}
    if(!row)return fail("Datenbankinitialisierung fehlgeschlagen",500);
    let s=structuredClone(row.state);
    try{s=await mutate(s,type,data,secretHash)}catch(e){return fail(e instanceof Error?e.message:"Ungültiger Spielzug",409)}
-   if(await saveVersion(row.version,s))return reply({state:publicView(s),version:row.version+1});
+   if(await saveVersion(row.version,s)){
+    await notifyNext(s);
+    return reply({state:publicView(s),version:row.version+1});
+   }
   }
   return fail("Gleichzeitige Änderung – bitte erneut versuchen.",409);
  }catch(e){return fail(e instanceof Error?e.message:"Serverfehler",500)}
