@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#101526">
+<meta name="description" content="Ein rundenbasiertes Pixel-JRPG für drei Helden. Mammet wartet.">
+<link rel="manifest" href="./manifest.webmanifest">
+<title>Chroniken von Asterfall – Mammet</title>
+<link rel="stylesheet" href="./style.css">
+<script defer src="./config.js"></script>
+<script defer src="./game.js"></script>
+</head>
+<body>
+<div class="shell">
+ <header class="topbar">
+  <div class="brand"><span class="star">✦</span><span><small>CHRONIKEN VON ASTERFALL</small><strong>MAMMETS SCHATTEN</strong></span></div>
+  <div class="round-pill" id="roundBadge">PROLOG</div>
+ </header>
+ <div id="notice" class="notice" role="status" aria-live="polite"></div>
+ <section id="lobby" class="lobby">
+  <div class="cover">
+    <div class="cover-art" aria-hidden="true">
+     <div class="moon"></div><div class="mountain one"></div><div class="mountain two"></div><div class="tower"></div>
+     <div class="tower-glow"></div><div class="pixel-star s1">✦</div><div class="pixel-star s2">✦</div><div class="pixel-star s3">✦</div>
+    </div>
+    <div class="cover-title"><small>16-BIT FANTASY · EPISODE I</small><h1>Das zerbrochene<br>Morgenlicht</h1><p>Als die sieben Sternenglocken verstummten, erwachte der Puppenkönig Mammet. Nur drei Reisende können Asterfall noch retten.</p></div>
+  </div>
+  <div class="panel lobby-panel">
+   <h2>✧ Die Heldengruppe</h2><p class="muted">Das Abenteuer beginnt erst, wenn genau drei unterschiedliche Helden beigetreten sind.</p>
+   <div id="lobbyRoster" class="roster"></div>
+   <div id="joinControls">
+    <label for="playerName">DEIN NAME</label><input id="playerName" maxlength="18" autocomplete="nickname" placeholder="Wie heißt du?">
+    <label>WÄHLE DEINEN HELDEN</label>
+    <div id="heroPicker" class="hero-picker"></div>
+    <button class="btn primary full" id="joinBtn">✦ DER GRUPPE BEITRETEN</button>
+   </div>
+   <div id="joinedMessage" class="hidden"><div class="callout">✦ Du bist dabei! Sobald drei Helden angemeldet sind, beginnt die erste Runde.</div></div>
+   <p id="modeMessage" class="muted micro"></p>
+  </div>
+ </section>
+ <div id="play" class="game hidden">
+  <aside class="sidebar left" id="leftSidebar">
+   <div class="panel"><h2>✦ Deine Figur</h2><div id="myHero"></div></div>
+   <div class="panel"><h2>✦ Inventar</h2><div id="myInventory"></div></div>
+   <div class="panel"><h2>✦ Auftrag</h2><p class="small">Finde die Fragmente der sieben Sternenglocken, ehe Mammet die Himmelsuhr anhalten kann.</p><div id="questProgress"></div></div>
+  </aside>
+  <main class="center">
+   <div class="scene-head"><span id="placeName">ASTERCROSS · WALDRAND</span><span id="weather">☾ NACHT</span></div>
+   <div class="map-wrap"><canvas id="world" width="320" height="208" role="img" aria-label="Pixelkarte der JRPG-Welt"></canvas><div class="map-vignette"></div></div>
+   <div class="battle-line" id="turnLine"></div>
+   <div class="panel dialogue"><div class="speaker" id="speaker">ERZÄHLER</div><p id="story" aria-live="polite"></p></div>
+   <div class="panel action-panel">
+    <h2>✧ Dein nächster Zug</h2><div id="waitMessage" class="callout"></div>
+    <div id="actionControls" class="hidden">
+     <div class="actions" id="quickActions"></div>
+     <label for="actionText">EIGENE HANDLUNG ODER DIALOG</label>
+     <textarea id="actionText" maxlength="400" rows="3" placeholder="Ich spreche mit dem Händler …"></textarea>
+     <button id="actBtn" class="btn primary full">► AKTION BESTÄTIGEN</button>
+    </div>
+   </div>
+   <div class="panel"><h2>✦ Ereignisprotokoll</h2><div id="eventLog" class="eventlog"></div></div>
+  </main>
+  <aside class="sidebar right" id="rightSidebar">
+   <div class="panel"><h2>✧ Die Gefährten</h2><div id="partyCards"></div></div>
+   <div class="panel boss"><h2>☠ MAMMET</h2><div class="boss-face" aria-hidden="true">♛</div><p class="small">Puppenkönig der Nachtdämmerung</p><div id="bossStatus" class="muted small"></div></div>
+   <div class="panel"><h2>✦ Zugfolge</h2><div id="orderList"></div><p class="micro muted">Mammet handelt zweimal pro Runde, niemals zweimal direkt hintereinander.</p></div>
+  </aside>
+ </div>
+ <nav class="mobile-nav hidden" id="mobileNav">
+  <button data-tab="left" class="navbtn">◈ HELD</button><button data-tab="center" class="navbtn active">▣ SPIEL</button><button data-tab="right" class="navbtn">♛ GRUPPE</button>
+ </nav>
+ <footer>© ASTERFALL · PIXEL TALES · <span id="connection">VERBINDUNG WIRD GEPRÜFT</span></footer>
+</div>
+</body>
+</html>
