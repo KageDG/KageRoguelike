@@ -1,6 +1,6 @@
 # Chroniken von Asterfall: Mammets Schatten
 
-> Stand 2026-10-18: Die lokal spielbare Demo ist im Repository. Das sichere Multiplayer-Backend liegt als deploybarer Quellcode vor, ist aber NOCH NICHT eingerichtet. Auch GitHub Pages und Push müssen noch aktiviert werden.
+> Stand 2026-10-18: Die lokal spielbare Demo ist im Repository. Das Multiplayer-Backend und optionaler Web-Push-Versand liegen als deploybarer Quellcode vor, sind aber NOCH NICHT eingerichtet. GitHub Pages ist für das Repository nachweislich deaktiviert (`has_pages=false`). Eine Supabase-Verbindung muss vom Inhaber autorisiert werden; der ChatGPT-Connector dafür ist noch nicht installiert.
 
 ## JRPG-Setting
 
@@ -21,7 +21,7 @@ In Asterfall verstummen sieben Sternenglocken. Der Puppenkönig **Mammet** will 
 - config.js: ausschließlich öffentliche Supabase-URL und anon/publishable Key
 - manifest.webmanifest, icon.svg, sw.js: PWA und Push-Empfangsgrundlage
 - supabase/migrations/001_game_sessions.sql: PostgreSQL-Schema
-- supabase/functions/mammet-api/index.ts: Auth, JSON-State, CAS-Sperre, Boss-Züge und optionale KI-Erzählung
+- supabase/functions/mammet-api/index.ts: Auth, JSON-State, CAS-Sperre, Boss-Züge, Push-Subscriptions, optionaler Versand und optionale KI-Erzählung
 - gm-snapshot.json: öffentlich bereinigte Kopie des kanonischen Supabase-Spielstands für ChatGPT
 - director.json: vom wiederkehrenden ChatGPT-GM bearbeitbare Szene
 - .github/workflows/mammet-sync.yml im Repository-Root: 20-minütige Snapshot-Synchronisation
@@ -78,7 +78,7 @@ Palette: twilight, ember, storm, dawn. Wenn Runde oder Ereignis nicht mehr aktue
 
 ### D. Push-Mitteilungen
 
-PWA und Service Worker sind vorbereitet, aber der Versand von echten Web-Push-Nachrichten ist NICHT implementiert. Dafür braucht man VAPID-Schlüssel, Subscription-Speicherung und einen Push-Sender im Backend. iOS-Push setzt eine zum Home-Bildschirm hinzugefügte Web-App und Benachrichtigungsfreigabe voraus. Bis dahin können Spieler die geöffnete Seite nutzen; sie aktualisiert den Zustand alle 20 Sekunden.
+Das Frontend kann per Button eine Push-Subscription registrieren. Das Backend speichert Abos und verschickt nach einem erfolgreichen Spielzug Push an den Spieler, der als Nächstes dran ist. Damit dieser Versand läuft, müssen außerdem VAPID-Schlüssel erzeugt und konfiguriert werden (z. B. via `npx web-push generate-vapid-keys`): in Supabase-Edge-Secrets `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` und `VAPID_SUBJECT=mailto:DEINE_MAIL`, dazu den ÖFFENTLICHEN Schlüssel in `config.js` als `pushPublicKey` eintragen. Das npm-Modul `web-push` wird beim ersten Versand dynamisch in der Edge-Funktion importiert; vor echtem Einsatz den Versand mit zwei Geräten testen. iOS-Push setzt eine zum Home-Bildschirm hinzugefügte Web-App und Benachrichtigungsfreigabe voraus. Ohne diese Einrichtung können Spieler die geöffnete Seite nutzen; sie aktualisiert den Zustand alle 20 Sekunden.
 
 ## Betrieb
 
