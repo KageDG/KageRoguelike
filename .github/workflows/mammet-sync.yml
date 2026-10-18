@@ -1,0 +1,47 @@
+name: Mammet - GM snapshot (every 20 minutes)
+on:
+  schedule:
+    - cron: "7,27,47 * * * *"
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: mammet-gm-snapshot
+  cancel-in-progress: false
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_URL: ${{ secrets.MAMMET_SUPABASE_URL }}
+      SUPABASE_ANON_KEY: ${{ secrets.MAMMET_SUPABASE_ANON_KEY }}
+      GAME_INVITE_CODE: ${{ secrets.MAMMET_GAME_INVITE_CODE }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch sanitized world state
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_ANON_KEY" ] || [ -z "$GAME_INVITE_CODE" ]; then
+            echo "::notice::Mammet snapshot not configured: add the three repository secrets."
+            exit 0
+          fi
+          jq -n --arg invite "$GAME_INVITE_CODE" '{type:"state",invite:$invite}' > /tmp/request.json
+          curl --fail --silent --show-error --retry 2 --max-time 35 \
+            "$SUPABASE_URL/functions/v1/mammet-api" \
+            -H "Content-Type: application/json" \
+            -H "apikey: $SUPABASE_ANON_KEY" \
+            -H "Authorization: Bearer $SUPABASE_ANON_KEY" \
+            --data-binary @/tmp/request.json > /tmp/response.json
+          jq -e '.state and (.state | type == "object")' /tmp/response.json >/dev/null
+          jq '{state:.state}' /tmp/response.json > mammet-jrpg/gm-snapshot.json
+      - name: Commit changed snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add mammet-jrpg/gm-snapshot.json
+          if git diff --cached --quiet; then exit 0; fi
+          git config user.name "mammet-gm-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore(mammet): mirror current campaign state"
+          git pull --rebase origin master
+          git push origin HEAD:master
